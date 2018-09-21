@@ -15,8 +15,13 @@ $pdo_service = new pdoSerive($db_localhost);
 //$rs = $pdo_service->queryBySql($sql,['1381a74a0550bbab81ecd364d21466bb']);
 try{
 //    $sql = "INSERT INTO city (`province_id`,`name`) VALUE (?,?)";
-    $sql = "UPDATE city SET province_id = ?,status=1";
-    $rs = $pdo_service->exexBySql($sql,['fdfd2']);
+//    $sql = "UPDATE city SET province_id = ? WHERE id = ?";
+    $sql = "SELECT * FROM city where id=1";
+    $where = array(
+        [3],
+        [10],
+    );
+    $rs = $pdo_service->queryBySql($sql);
     echo '<pre>';
     print_r($rs);
 }catch (\PDOException $e){
@@ -45,30 +50,49 @@ class pdoSerive{
 
     /**
      * 执行查询sql
+     * $type 0单次查询 1多次查询(并集返回结果) 2 多次查询(分开返回结果)
      */
-    public function queryBySql($sql, $where=array()){
+    public function queryBySql($sql, $where=array(),$type=0){
         $pdo = $this->db_connect();
         $sth = $pdo->prepare($sql);//预处理sql
         $pdo = null;
-        $sth->execute($where);
-        $result = $sth->fetchAll(PDO::FETCH_ASSOC);//获取结果集
-//        $rs_sql = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        if ($type == 0){
+            $sth->execute($where);
+            $result = $sth->fetchAll(PDO::FETCH_ASSOC);//获取结果集
+        }else{
+            $result = array();
+            foreach ($where as $key => $val){
+                $sth->execute($val);
+                $tmp = $sth->fetchAll(PDO::FETCH_ASSOC);//获取结果集
+                if ($tmp){
+                    if ($type == 1){
+                        foreach ($tmp as $v){
+                            $result[$key] = $v;
+                        }
+                    }else{
+                        $result[$key] = $tmp;
+                    }
+                }
+            }
+        }
         return $result;
     }
 
     /**
      * 执行更新,插入,删除sql  返回影响行数
      */
-    public function exexBySql($sql, $where=array()){
+    public function exexBySql($sql, $where=array(),$type=0){
         $pdo = $this->db_connect();
         $sth = $pdo->prepare($sql);//预处理sql
-//        $pdo = null;
-        $rs_ex = $sth->execute($where);
-        if ($rs_ex){
-            return $sth->rowCount();//获取影响行数
+        $pdo = null;
+        if ($type == 0){
+            $sth->execute($where);
         }else{
-            return false;
+            foreach ($where as $val){
+                $sth->execute($val);
+            }
         }
+        return $sth->rowCount();//获取影响行数
     }
 
     /**
