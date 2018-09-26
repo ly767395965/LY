@@ -1,6 +1,6 @@
 <?php
 /**
- * 服务函数文件: 查询部落战情况,并记录
+ * 服务函数文件: 根据部落战日志情况,查询其他部落的对战日志并记录
  */
 $db_localhost = array(
     'host' => '127.0.0.1',
@@ -12,7 +12,7 @@ $db_localhost = array(
 );
 $redis_conf = array('host'=>'127.0.0.1', 'port'=>6379, 'db'=>1);
 $api_cf = array(
-    'key' => 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAtYTFlYi03ZmExLTJjNzQzM2M2Y2NhNSJ9.eyJpc3MiOiJzdXBlcmNlbGwiLCJhdWQiOiJzdXBlcmNlbGw6Z2FtZWFwaSIsImp0aSI6IjNkMzVkMTZhLTk1NjUtNDMzYS05NmY3LWVkZjhmYWZmN2YzOSIsImlhdCI6MTUzNzQ1MDk4Mywic3ViIjoiZGV2ZWxvcGVyL2E3NjM3MGY1LWU1Y2YtMzdiNy0yNzAzLWZkNmQ4NGQ0NGRkMyIsInNjb3BlcyI6WyJjbGFzaCJdLCJsaW1pdHMiOlt7InRpZXIiOiJkZXZlbG9wZXIvc2lsdmVyIiwidHlwZSI6InRocm90dGxpbmcifSx7ImNpZHJzIjpbIjEuMjA0LjkuODAiXSwidHlwZSI6ImNsaWVudCJ9XX0.fZv0A-LSDdqk4JXxu-PKUISCpIJzZpgXlD-7i3n8o20QRU48cBjkGme0yBNeruRzbSuMZcijYNLaU8oDdDASdA',  //cocapi请求key
+    'key' => 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAtYTFlYi03ZmExLTJjNzQzM2M2Y2NhNSJ9.eyJpc3MiOiJzdXBlcmNlbGwiLCJhdWQiOiJzdXBlcmNlbGw6Z2FtZWFwaSIsImp0aSI6ImIwYzUxODhmLWQ3NzEtNDgxOC04YTkwLTZkNmY1ZTM3YjAyNiIsImlhdCI6MTUzNzMyNDQ1OSwic3ViIjoiZGV2ZWxvcGVyL2E3NjM3MGY1LWU1Y2YtMzdiNy0yNzAzLWZkNmQ4NGQ0NGRkMyIsInNjb3BlcyI6WyJjbGFzaCJdLCJsaW1pdHMiOlt7InRpZXIiOiJkZXZlbG9wZXIvc2lsdmVyIiwidHlwZSI6InRocm90dGxpbmcifSx7ImNpZHJzIjpbIjU4LjQyLjIzMS4yNDQiXSwidHlwZSI6ImNsaWVudCJ9XX0.-fmjpEL4bMlISFkMl9wkQf2LH3Wu5AM3zzcV3ae4WHBJWUMfjmasJWQmsG-lSvCQasU3Q1_Ns_gmd1x-ldGg3w',  //cocapi请求key
     'all_url' => 'https://api.clashofclans.com/v1', //总url
 
     'clans' => array('url' => '/clans'),
@@ -31,24 +31,52 @@ $api_cf = array(
 try{
     $http_util = new HttpUtils($api_cf);
     $pdo = new pdoSerive($db_localhost);
-    $war_logs = CommonFun::queryWarlog($http_util,'#RYUJ902L', $pdo);
+    $tab_name = 'coc_clans_war_log';
+    $tab_num = 1;
+    $tab = $tab_name.$tab_num;
+
+    $war_logs = CommonFun::queryWarlog($http_util,'#RYUJ902L', $pdo, $tab);
     $start = microtime(true);
+    $i = 0;//记录成功数
+    $error_count = 0;//记录失败数
+    $exam_time = 10;//检测时间段 单位:minute
+    $exam_last = 0;
+
     while (true){
-        $sql = "SELECT log_id,clan_tag2,clan_name2 FROM coc_clans_war_log1 WHERE is_record = 0 ORDER BY add_time ASC LIMIT 1";
+        $sql = "SELECT id,clan_tag2,clan_name2 FROM {$tab} WHERE is_record = 0 ORDER BY add_time ASC LIMIT 1";
         $clan = $pdo->queryBySql($sql);
         if ($clan){
             $clan = $clan[0];
-            $war_logs = CommonFun::queryWarlog($http_util,$clan['clan_tag2'], $pdo);
-        }
-        $sql = "UPDATE coc_clans_war_log1 SET is_record = 1 WHERE log_id=?";
-        $pdo->exexBySql($sql,[$clan['log_id']]);
-        $use_time = microtime(true) - $start;
-        $use_time = round($use_time/60);
-        if ($use_time > 10){
-            echo 'The End! :'.$use_time;
+            $war_logs = CommonFun::queryWarlog($http_util,$clan['clan_tag2'], $pdo,$tab);
+            if ($war_logs){
+                $sql = "UPDATE {$tab} SET is_record = 1 WHERE id=?";
+                $i++;
+            }else{
+                $sql = "UPDATE {$tab} SET is_record = 3 WHERE id=?";
+                $error_count++;
+            }
+        }else{
+            echo 'The All End! :'.$use_time. ' success:'.$i. ' error:'.$error_count."\r\n";
             break;
         }
+        $pdo->exexBySql($sql,[$clan['id']]);
+        $use_time = microtime(true) - $start;
+        $use_time = round($use_time/60);
+
+        if ($use_time - $exam_last >= $exam_time){
+            $exam_last = $use_time;
+            $sql = "SELECT COUNT(id) as num FROM {$tab}";
+            $log_num = $pdo->queryBySql($sql);
+            if ($log_num[0]['num'] > 300000){
+                echo 'The End! :'.$use_time. ' success:'.$i. ' error:'.$error_count."\r\n";
+                break;
+            }
+        }
+
+        echo 'success:'.$i.' error:'.$error_count.' cost_time:'.$use_time."\r\n";
     }
+
+    exit('QAQ!!!');
 
 //    $rs = $http_util->reqCocApi('locations_players',['locationId'=>'32000007'],['limit'=>120, 'after'=>'eyJwb3MiOjEyMH0']);
     $rs = $http_util->reqCocApi('clan_warlog',['clanTag'=>'#L8YRPL89']);
@@ -89,7 +117,7 @@ try{
     }
 
 }catch (\Exception $e){
-    echo 'error:'.$e->getMessage();
+    exit( 'error:'.$e->getMessage() );
 }
 
 
@@ -301,13 +329,13 @@ class CommonFun {
 
     }
 
-    public static function queryWarlog($http_util,$clan_tag,$pdo){
+    public static function queryWarlog($http_util,$clan_tag,$pdo,$tab){
         $rs = $http_util->reqCocApi('clan_warlog',['clanTag'=>$clan_tag]);
         if ($rs['status']){
             if ($rs['content']){
                 $content = json_decode($rs['content']);
-                if (isset($content['items'])){
-                    self::addWarLog($pdo,$content['items']);
+                if (isset($content->items)){
+                    self::addWarLog($pdo,$content->items,$tab);
                 }
             }
             return $rs['content'];
@@ -325,59 +353,60 @@ class CommonFun {
         }
     }
 
-    public static function addWarLog($pdo,$data){
-        $sql_query = "SELECT log_id,attacks2 FROM coc_clans_war_log1 WHERE clan_tag1 = ? AND clan_tag2 = ?";
+    public static function addWarLog($pdo,$data,$tab){
+        $sql_query = "SELECT id,attacks2 FROM {$tab} WHERE clan_tag1 = ? AND clan_tag2 = ?";
         $insert_ary = array();
         $update_ary = array();
+
         foreach ($data as $key => $val){
-            $where = array([$val['clan']['tag'], $val['opponent']['tag']], [$val['opponent']['tag'], $val['clan']['tag']]);
+            $clan_tag = $val->clan->tag;
+            $opponent_tag = $val->opponent->tag;
+            $where = array([$clan_tag, $opponent_tag], [$opponent_tag, $clan_tag]);
             $rs = $pdo->queryBySql($sql_query,$where, 1);
             if (!isset($rs[0]) && !isset($rs[1])){
-                switch ($val['result']){
+                switch ($val->result){
                     case 'win':
-                        $val['result'] = 1;
+                        $val->result = 1;
                         break;
                     case 'lose':
-                        $val['result'] = 0;
+                        $val->result = 0;
                         break;
                     default:
-                        $val['result'] = 2;
+                        $val->result = 2;
                 }
-                $val['endTime'] = self::opTime($val['endTime']);
+                $val->endTime = self::opTime($val->endTime);
                 $insert_ary[] = array(
-                    self::create_guid_md5(),
-                    $val['clan']['tag'],
-                    $val['result'],
-                    $val['endTime'],
-                    $val['teamSize'],
-                    $val['clan']['tag'],
-                    $val['clan']['name'],
-                    $val['clan']['clanLevel'],
-                    $val['clan']['attacks'],
-                    $val['clan']['stars'],
-                    $val['clan']['destructionPercentage'],
-                    $val['clan']['expEarned'],
-                    $val['opponent']['tag'],
-                    $val['opponent']['name'],
-                    $val['opponent']['clanLevel'],
-                    $val['opponent']['stars'],
-                    $val['opponent']['destructionPercentage'],
+                    $val->clan->tag,
+                    $val->result,
+                    $val->endTime,
+                    $val->teamSize,
+                    $val->clan->name,
+                    $val->clan->clanLevel,
+                    $val->clan->attacks,
+                    $val->clan->stars,
+                    $val->clan->destructionPercentage,
+                    $val->clan->expEarned,
+                    $val->opponent->tag,
+                    $val->opponent->name,
+                    $val->opponent->clanLevel,
+                    $val->opponent->stars,
+                    $val->opponent->destructionPercentage,
                     time()
                 );
             }else{
                 if (isset($rs[1]) && $rs[1]['attacks2'] == -1){
                     $update_ary[] = array(
-                        $val['clan']['attacks'],
-                        $val['clan']['expEarned'],
-                        $rs[1]['log_id']
+                        $val->clan->attacks,
+                        $val->clan->expEarned,
+                        $rs[1]['id']
                     );
                 }
             };
         }
-        $sql = "INSERT INTO coc_clans_war_log1 ('log_id','clan_tag1','result','end_time','team_size','clan_name1','clan_level1','attacks1','stars1','percentage1','exp_earned1','clan_tag2','clan_name2','clan_level2','stars2','percentage2','add_time') VALUE (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        $sql = "INSERT INTO {$tab} (clan_tag1,result,end_time,team_size,clan_name1,clan_level1,attacks1,stars1,percentage1,exp_earned1,clan_tag2,clan_name2,clan_level2,stars2,percentage2,add_time) VALUE (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         $pdo->exexBySql($sql,$insert_ary,1);
 
-        $sql = "UPDATE coc_clans_war_log1 SET attacks2=?,exp_earned2=? WHERE log_id=?";
+        $sql = "UPDATE {$tab} SET attacks2=?,exp_earned2=? WHERE id=?";
         $pdo->exexBySql($sql,$update_ary,1);
         return true;
     }
@@ -393,9 +422,9 @@ class CommonFun {
         $str = substr($str, 0, 15);
         $ary = explode("T",$str);
         $ary[0] = substr_replace($ary[0],'-',-2,0);
-        $ary[0] = substr_replace($ary[0],'-',-4,0);
+        $ary[0] = substr_replace($ary[0],'-',-5,0);
         $ary[1] = substr_replace($ary[1],':',-2,0);
-        $ary[1] = substr_replace($ary[1],':',-4,0);
+        $ary[1] = substr_replace($ary[1],':',-5,0);
         return strtotime($ary[0].' '.$ary[1])+28800;
     }
 }
