@@ -3,27 +3,27 @@ $db_localhost = array(
     'host' => '127.0.0.1',
     'username'=>'root',
     'password'=>'',
-    'database'=>'test',
+    'database'=>'coc',
     'port' => '3306',
     'charset'=>'utf8'
 );
 $redis_conf = array('host'=>'127.0.0.1', 'port'=>3306);
 
-$pdo_service = new pdoSerive($db_localhost);
+//$pdo_service = new pdoSerive($db_localhost);
 //$sql = "SELECT * FROM user_info ";
 //$sql = "UPDATE user_info SET flag=? ";
 //$rs = $pdo_service->queryBySql($sql,['1381a74a0550bbab81ecd364d21466bb']);
 try{
 //    $sql = "INSERT INTO city (`province_id`,`name`) VALUE (?,?)";
 //    $sql = "UPDATE city SET province_id = ? WHERE id = ?";
-    $sql = "SELECT * FROM city where id=1";
-    $where = array(
-        [3],
-        [10],
-    );
-    $rs = $pdo_service->queryBySql($sql);
-    echo '<pre>';
-    print_r($rs);
+//    $sql = "SELECT * FROM city where id=1";
+//    $where = array(
+//        [3],
+//        [10],
+//    );
+//    $rs = $pdo_service->queryBySql($sql);
+//    echo '<pre>';
+//    print_r($rs);
 }catch (\PDOException $e){
     echo $e->getMessage();
 }

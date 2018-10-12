@@ -29,46 +29,46 @@ $api_cf = array(
     'players' => '/players/{playerTag}'
 );
 try{
-    $http_util = new HttpUtils($api_cf);
-//    $rs = $http_util->reqCocApi('locations_players',['locationId'=>'32000007'],['limit'=>120, 'after'=>'eyJwb3MiOjEyMH0']);
-    $rs = $http_util->reqCocApi('clan_currentwar',['clanTag'=>'#L8YRPL89']);
-    print_r($rs);
-    exit;
-
-    $redis = getRedis($redis_conf);
-    $api_key = $redis->get('config:api_key');//获取设置的key
-    if ($api_key) $api_cf['key'] = $api_key;
-
-    CommonFun::signOut($redis, 'currentwar300:sign_out', 1);//判断将要退出本次操作
-    CommonFun::lock($redis, 'currentwar300:lock', 1);//判断将要进行的操作是否锁住,及给当前进程加锁
-
-    $op_start = $redis->get('currentwar300:op_start');//操作开始的score
-    $op_num = $redis->get('currentwar300:op_num');//获取操作的数量
-    $time = time()+300;
-    $clan_arys = $redis->zRangeByScore('waring',$op_start,$time,array('limit'=>array(0,$op_num)));//获取待操作数据
-    $clan_scores = $redis->zRangeByScore('waring',$op_start,$time,array('withscores'=>true,'limit'=>array(0,$op_num+1)));//获取待操作scores
-    $clan_num = count($clan_scores);
-
-    if ($clan_num <= $op_num){
-        $redis->setex('currentwar300:sign_out',240,1);//设置时长为四分钟的休息标识
-        $redis->set('currentwar300:op_start',$time);//设置下一组开始的score
-    }else{
-        $redis->set('currentwar300:op_start',end($clan_scores));//设置下一组开始的score
-    }
-    $redis->set('currentwar300:lock',0);//已拿取到数据解开锁
-
-    foreach ($clan_arys as $key => $val){
-        if ($val){
-            $double_clans = explode('|', $val);
-            $war_res = $http_util->reqCocApi('clan_currentwar',['clanTag'=>'#'.$double_clans[0]]);
-            if ($war_res['status']){
-                $content = json_decode($war_res['content']);
-                /*if (isset()){
-
-                }*/
-            }
-        }
-    }
+//    $http_util = new HttpUtils($api_cf);
+////    $rs = $http_util->reqCocApi('locations_players',['locationId'=>'32000007'],['limit'=>120, 'after'=>'eyJwb3MiOjEyMH0']);
+//    $rs = $http_util->reqCocApi('clan_currentwar',['clanTag'=>'#L8YRPL89']);
+//    print_r($rs);
+//    exit;
+//
+//    $redis = getRedis($redis_conf);
+//    $api_key = $redis->get('config:api_key');//获取设置的key
+//    if ($api_key) $api_cf['key'] = $api_key;
+//
+//    CommonFun::signOut($redis, 'currentwar300:sign_out', 1);//判断将要退出本次操作
+//    CommonFun::lock($redis, 'currentwar300:lock', 1);//判断将要进行的操作是否锁住,及给当前进程加锁
+//
+//    $op_start = $redis->get('currentwar300:op_start');//操作开始的score
+//    $op_num = $redis->get('currentwar300:op_num');//获取操作的数量
+//    $time = time()+300;
+//    $clan_arys = $redis->zRangeByScore('waring',$op_start,$time,array('limit'=>array(0,$op_num)));//获取待操作数据
+//    $clan_scores = $redis->zRangeByScore('waring',$op_start,$time,array('withscores'=>true,'limit'=>array(0,$op_num+1)));//获取待操作scores
+//    $clan_num = count($clan_scores);
+//
+//    if ($clan_num <= $op_num){
+//        $redis->setex('currentwar300:sign_out',240,1);//设置时长为四分钟的休息标识
+//        $redis->set('currentwar300:op_start',$time);//设置下一组开始的score
+//    }else{
+//        $redis->set('currentwar300:op_start',end($clan_scores));//设置下一组开始的score
+//    }
+//    $redis->set('currentwar300:lock',0);//已拿取到数据解开锁
+//
+//    foreach ($clan_arys as $key => $val){
+//        if ($val){
+//            $double_clans = explode('|', $val);
+//            $war_res = $http_util->reqCocApi('clan_currentwar',['clanTag'=>'#'.$double_clans[0]]);
+//            if ($war_res['status']){
+//                $content = json_decode($war_res['content']);
+//                /*if (isset()){
+//
+//                }*/
+//            }
+//        }
+//    }
 
 }catch (\Exception $e){
     echo 'error:'.$e->getMessage();
@@ -81,10 +81,10 @@ try{
 //$redis->zAdd('key', 2, 'val2');
 //$redis->zAdd('key', 10, 'val10');
 //$rs = $redis->zRange('key', 0, -1,true);
-$clan_start = $redis->zRangeByScore('key',1,11,array('withscores'=>false,'limit'=>array(0,5)));
+//$clan_start = $redis->zRangeByScore('key',1,11,array('withscores'=>false,'limit'=>array(0,5)));
 //$rs = $redis->set('test',1);
 //$rs = $redis->get('test');
-var_dump($clan_start);
+//var_dump($clan_start);
 
 class pdoSerive{
     private $db_config;

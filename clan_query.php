@@ -31,11 +31,16 @@ $api_cf = array(
 try{
     $http_util = new HttpUtils($api_cf);
     $pdo = new pdoSerive($db_localhost);
-    $tab_name = 'coc_clans_war_log';
-    $tab_num = 1;
-    $tab = $tab_name.$tab_num;
 
-    $war_logs = CommonFun::queryWarlog($http_util,'#RYUJ902L', $pdo, $tab);
+    $tab_record = array();
+    $tab_record['tab_name'] = 'coc_clans_war_log';
+    $tab_record['tab_num'] = 3; //从那张表开始写
+    $tab_record['tab'] = $tab_record['tab_name'].$tab_record['tab_num'];//写入表
+
+    $tab_record['query_tab_num'] = 1;//从那张表开始查
+    $tab_record['query_tab'] = $tab_record['tab_name'].$tab_record['query_tab_num'];//查询表
+
+//    $war_logs = CommonFun::queryWarlog($http_util,'#RYUJ902L', $pdo, $tab);
     $start = microtime(true);
     $i = 0;//记录成功数
     $error_count = 0;//记录失败数
@@ -43,21 +48,25 @@ try{
     $exam_last = 0;
 
     while (true){
-        $sql = "SELECT id,clan_tag2,clan_name2 FROM {$tab} WHERE is_record = 0 ORDER BY add_time ASC LIMIT 1";
+        $sql = "SELECT id,clan_tag2,clan_name2 FROM {$tab_record['query_tab']} WHERE is_record = 0 ORDER BY add_time ASC LIMIT 1";
         $clan = $pdo->queryBySql($sql);
         if ($clan){
             $clan = $clan[0];
-            $war_logs = CommonFun::queryWarlog($http_util,$clan['clan_tag2'], $pdo,$tab);
+            $war_logs = CommonFun::queryWarlog($http_util,$clan['clan_tag2'], $pdo,$tab_record['tab']);
             if ($war_logs){
-                $sql = "UPDATE {$tab} SET is_record = 1 WHERE id=?";
+                $sql = "UPDATE {$tab_record['query_tab']} SET is_record = 1 WHERE id=?";
                 $i++;
             }else{
-                $sql = "UPDATE {$tab} SET is_record = 3 WHERE id=?";
+                $sql = "UPDATE {$tab_record['query_tab']} SET is_record = 3 WHERE id=?";
                 $error_count++;
             }
         }else{
-            echo 'The All End! :'.$use_time. ' success:'.$i. ' error:'.$error_count."\r\n";
-            break;
+            $tab_record['query_tab_num']++;
+            if ($tab_record['query_tab_num'] > $tab_record['tab_num']){//判断查询的表是否超过写入的表,如果超过,这说明已处理完成
+                echo 'The All End! :'.$use_time. ' success:'.$i. ' error:'.$error_count."\r\n";
+                break;
+            }
+            $tab_record['query_tab'] = $tab_record['tab_name'].$tab_record['query_tab_num'];
         }
         $pdo->exexBySql($sql,[$clan['id']]);
         $use_time = microtime(true) - $start;
@@ -65,11 +74,16 @@ try{
 
         if ($use_time - $exam_last >= $exam_time){
             $exam_last = $use_time;
-            $sql = "SELECT COUNT(id) as num FROM {$tab}";
+            $sql = "SELECT COUNT(id) as num FROM {$tab_record['tab']}";
             $log_num = $pdo->queryBySql($sql);
-            if ($log_num[0]['num'] > 300000){
-                echo 'The End! :'.$use_time. ' success:'.$i. ' error:'.$error_count."\r\n";
-                break;
+
+            if ($log_num[0]['num'] > 100000){
+                $tab_record['tab_num']++;
+                if ($tab_record['tab_num'] > 10){//判断是否超出当前库中存储表数量
+                    echo 'Tab is full! :'.$use_time. ' success:'.$i. ' error:'.$error_count."\r\n";
+                    break;
+                }
+                $tab_record['tab'] = $tab_record['tab_name'].$tab_record['tab_num'];
             }
         }
 
@@ -325,11 +339,12 @@ class CommonFun {
         return true;
     }
 
-    public static function addsignOut($redis, $key, $out_str){
-
+    public static function addsignOut(){
+//        $test = $GLOBALS['test'];
+//        print_r($test);
     }
 
-    public static function queryWarlog($http_util,$clan_tag,$pdo,$tab){
+    public static function queryWarlog($http_util,$clan_tag,$pdo,$tab){ //$tab是写入的表,并不是判断部落是否存在的表
         $rs = $http_util->reqCocApi('clan_warlog',['clanTag'=>$clan_tag]);
         if ($rs['status']){
             if ($rs['content']){
@@ -354,15 +369,26 @@ class CommonFun {
     }
 
     public static function addWarLog($pdo,$data,$tab){
-        $sql_query = "SELECT id,attacks2 FROM {$tab} WHERE clan_tag1 = ? AND clan_tag2 = ?";
         $insert_ary = array();
         $update_ary = array();
+        $tab_record = $GLOBALS['tab_record'];
+        $tab_num = $tab_record['tab_num'];
+        $query_tab_num = $tab_record['query_tab_num'];
+        $round = $tab_num - $query_tab_num;
 
         foreach ($data as $key => $val){
             $clan_tag = $val->clan->tag;
             $opponent_tag = $val->opponent->tag;
             $where = array([$clan_tag, $opponent_tag], [$opponent_tag, $clan_tag]);
-            $rs = $pdo->queryBySql($sql_query,$where, 1);
+
+            for ($i=0; $i<= $round; $i++){
+                $check_tab = $tab_record['tab_name'] . ($query_tab_num+$i);
+                $sql_query = "SELECT id,attacks2 FROM {$check_tab} WHERE clan_tag1 = ? AND clan_tag2 = ?";
+                $rs = $pdo->queryBySql($sql_query,$where, 1);
+                if ($rs){
+                    break;
+                }
+            }
             if (!isset($rs[0]) && !isset($rs[1])){
                 switch ($val->result){
                     case 'win':
@@ -375,6 +401,10 @@ class CommonFun {
                         $val->result = 2;
                 }
                 $val->endTime = self::opTime($val->endTime);
+                if ($val->teamSize === null){
+                    continue;
+                }
+
                 $insert_ary[] = array(
                     $val->clan->tag,
                     $val->result,
@@ -384,13 +414,13 @@ class CommonFun {
                     $val->clan->clanLevel,
                     $val->clan->attacks,
                     $val->clan->stars,
-                    $val->clan->destructionPercentage,
+                    $val->clan->destructionPercentage === null ? -1 : $val->clan->destructionPercentage,
                     $val->clan->expEarned,
                     $val->opponent->tag,
                     $val->opponent->name,
                     $val->opponent->clanLevel,
                     $val->opponent->stars,
-                    $val->opponent->destructionPercentage,
+                    $val->opponent->destructionPercentage === null ? -1 : $val->opponent->destructionPercentage,
                     time()
                 );
             }else{
@@ -403,11 +433,15 @@ class CommonFun {
                 }
             };
         }
-        $sql = "INSERT INTO {$tab} (clan_tag1,result,end_time,team_size,clan_name1,clan_level1,attacks1,stars1,percentage1,exp_earned1,clan_tag2,clan_name2,clan_level2,stars2,percentage2,add_time) VALUE (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
-        $pdo->exexBySql($sql,$insert_ary,1);
+        if (!empty($insert_ary)){
+            $sql = "INSERT INTO {$tab} (clan_tag1,result,end_time,team_size,clan_name1,clan_level1,attacks1,stars1,percentage1,exp_earned1,clan_tag2,clan_name2,clan_level2,stars2,percentage2,add_time) VALUE (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+            $pdo->exexBySql($sql,$insert_ary,1);
+        }
 
-        $sql = "UPDATE {$tab} SET attacks2=?,exp_earned2=? WHERE id=?";
-        $pdo->exexBySql($sql,$update_ary,1);
+        if (!empty($insert_ary)){
+            $sql = "UPDATE {$check_tab} SET attacks2=?,exp_earned2=? WHERE id=?";
+            $pdo->exexBySql($sql,$update_ary,1);
+        }
         return true;
     }
 
