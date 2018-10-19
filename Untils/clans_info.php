@@ -7,14 +7,8 @@ include '../clan_300.php';
 $pdo_service = new pdoSerive($db_localhost);
 $coc_api = new HttpUtils($api_cf);
 
-$sql = "SELECT * FROM coc_clans";
-$clans = $pdo_service->queryBySql($sql);
-if ($clans){
-    echo 'ok';
-}else{
-    echo 'no';
-}
-exit;
+//$sql = "SELECT * FROM coc_locations";
+//$clans = $pdo_service->queryBySql($sql);
 
 $start = 0;//开始位置
 $get_num = 100; //一次查询的日志量
@@ -60,7 +54,7 @@ while (true){
                 if ($data){
                     insertClan($pdo_service, $data);//添加索引表
                     $id = insertClanInfo($pdo_service, $clan_info_use, $data);//添加信息表
-                    if ($id > 200000){//当一张表满了时 切换到下张表
+                    if ($id > 1000000){//当一张表满了时 切换到下张表
                         $clan_info_num++;
                         if ($clan_info_num > $clan_info_max){
                             $finish = 1;//表已写完 结束
@@ -78,7 +72,7 @@ while (true){
                 if ($data){
                     insertClan($pdo_service, $data);//添加索引表
                     $id = insertClanInfo($pdo_service, $clan_info_use, $data);//添加信息表
-                    if ($id > 200000){//当一张表满了时 切换到下张表
+                    if ($id > 3000000){//当一张表满了时 切换到下张表
                         $clan_info_num++;
                         if ($clan_info_num > $clan_info_max){
                             $finish = 1;//表已写完 结束
@@ -147,8 +141,16 @@ function insertClanInfo($pdo, $tab, $data){
     $sql = "INSERT INTO {$tab} ('clan_tag', 'clan_name', 'description', 'type', 'location_id', 'badge_id', 'clan_level', 'clan_points', 'clan_versus_points', 'required_trophies', 'war_frequency', 'war_win_streak', 'war_wins', 'war_ties', 'war_losses', 'is_war_log_public', 'members') VALUE (?, ?, ? ,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
     switch ($data->type){
-
+        case 'inviteOnly': $data->type = 0;
+            break;
     }
+    switch ($data->warFrequency){
+        case 'inviteOnly': $data->warFrequency = 0;
+            break;
+    }
+
+    $data->badge_id = getImgId($data->badgeUrls->large);
+    if (!$data->badge_id) $data->badge_id = 0;
 
     $ary = [
         $data->tag,
@@ -156,22 +158,41 @@ function insertClanInfo($pdo, $tab, $data){
         $data->description,
         $data->type,
         $data->location->id,
+        $data->badge_id,
+        $data->clanLevel,
+        $data->clanPoints,
+        $data->clanVersusPoints,
+        $data->requiredTrophies,
+        $data->warFrequency,
+        $data->warWinStreak,
+        $data->warWins,
+        $data->warTies,
+        $data->warLosses,
+        $data->isWarLogPublic ? 1 : 0,
+        $data->members,
     ];
     return $pdo->exexBySql($sql,$ary);
 }
 
 //保存图片信息
-function saveImg(){
-
+function saveImg($pdo,$img_name,$url){
+    $sql = "INSERT INTO coc_sign_img ('img_name', 'remote_url') VALUE (?, ?)";
+    $id = $pdo->insertBySql($sql,[$img_name, $url]);
+    return $id ? $id : 0;
 }
 
 //查找图片id
 function getImgId($url,$pdo){
     $pos = strripos($url,'/');
     if ($pos > 0){
-        $rs = substr($url, $pos+1);
-        $sql = 'SELECT * FROM ';
-        $pdo->exexBySql();
+        $rs_name = substr($url, $pos+1);
+        $sql = 'SELECT id FROM coc_sign_img WHERE img_name = ?';
+        $rs_query = $pdo->exexBySql($sql,[$rs_name]);
+        if ($rs_query){
+            return $rs_query[0]['id'];
+        }else{
+            return saveImg($pdo,$rs_name,$url); //如果没查到则去保存改图片
+        }
     }else{
         return false;
     }

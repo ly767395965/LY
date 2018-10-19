@@ -6,7 +6,7 @@ $db_localhost = array(
     'host' => '127.0.0.1',
     'username'=>'root',
     'password'=>'',
-    'database'=>'test',
+    'database'=>'coc',
     'port' => '3306',
     'charset'=>'utf8'
 );
@@ -108,29 +108,47 @@ class pdoSerive{
     /**
      * 执行查询sql
      */
-    public function queryBySql($sql, $where=array()){
+    public function queryBySql($sql, $where=array(),$type=0){
         $pdo = $this->db_connect();
         $sth = $pdo->prepare($sql);//预处理sql
         $pdo = null;
-        $sth->execute($where);
-        $result = $sth->fetchAll(PDO::FETCH_ASSOC);//获取结果集
-//        $rs_sql = $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        if ($type == 0){
+            $sth->execute($where);
+            $result = $sth->fetchAll(PDO::FETCH_ASSOC);//获取结果集
+        }else{
+            $result = array();
+            foreach ($where as $key => $val){
+                $sth->execute($val);
+                $tmp = $sth->fetchAll(PDO::FETCH_ASSOC);//获取结果集
+                if ($tmp){
+                    if ($type == 1){
+                        foreach ($tmp as $v){
+                            $result[$key] = $v;
+                        }
+                    }else{
+                        $result[$key] = $tmp;
+                    }
+                }
+            }
+        }
         return $result;
     }
 
     /**
      * 执行更新,插入,删除sql  返回影响行数
      */
-    public function exexBySql($sql, $where=array()){
+    public function exexBySql($sql, $where=array(),$type=0){
         $pdo = $this->db_connect();
         $sth = $pdo->prepare($sql);//预处理sql
-//        $pdo = null;
-        $rs_ex = $sth->execute($where);
-        if ($rs_ex){
-            return $sth->rowCount();//获取影响行数
+        $pdo = null;
+        if ($type == 0){
+            $sth->execute($where);
         }else{
-            return false;
+            foreach ($where as $val){
+                $sth->execute($val);
+            }
         }
+        return $sth->rowCount();//获取影响行数(循环执行也返回的是1)
     }
 
     /**
@@ -145,9 +163,63 @@ class pdoSerive{
             $pdo = null;
             return $insert_id;//获取插入的自增id
         }else{
+            $pdo = null;
             return false;
         }
     }
+
+    /**
+     * 插入数据
+     * @param $table
+     * @param $data 以字段名为键的一维数组
+     * @return bool 返回插入的数据id,或者false
+     */
+    public function add($table,$data){
+        if (!is_array($data) && count($data) == 0) return false;
+
+        $where = array();
+        $filed_str = '';
+        $val_str = '';
+        foreach ($data as $key=>$val){
+            $filed_str .= $key.',';
+            $val_str .= '?,';
+            $where[] = $val;
+        }
+        $filed_str = rtrim($filed_str, ",");
+        $val_str = rtrim($val_str, ",");
+
+        $sql = "INSERT INTO {$table} ({$filed_str}) VALUE ({$val_str})";
+        return $this->insertBySql($sql,$where);
+    }
+
+    /**更新数据
+     * @param $table
+     * @param $data  以字段名为键的一维数组
+     * @param $where 条件语句
+     * @param string $wh_ary 条件语句中的参数
+     * @return bool|int 返回false或者影响行数
+     */
+    public function update($table,$data,$where='',$wh_ary=''){
+        if (!is_array($data) && count($data) == 0) return false;
+
+        $update_str = '';
+        $update_ary = array();
+        foreach ($data as $key => $val){
+            $update_str .= $key.'=?,';
+            $update_ary[] = $val;
+        }
+
+        if ($wh_ary){
+            $update_ary = array_merge($update_ary,$wh_ary);
+        }
+        $update_str = rtrim($update_str, ",");
+        $sql = "UPDATE {$table} SET {$update_str}";
+        if ($where){
+            $sql .= " WHERE {$where}";
+        }
+        return $this->exexBySql($sql,$update_ary);
+    }
+
 }
 
 function getRedis($config){
@@ -236,31 +308,5 @@ class HttpUtils {
         );
 
         return $this->http_coc($url, $headers, $timeOut, $connectTimeOut);
-    }
-}
-
-class CommonFun {
-    //判断是否退出执行程序
-    public static function signOut($redis, $key, $out_str){
-        $val = $redis->get($key);
-        if ($val == $out_str) exit;
-        return true;
-    }
-
-    //判断是否有锁及加锁
-    public static function lock($redis, $key, $is_lock){
-        $val = $redis->get($key);
-        while (true){
-            if ($val == $is_lock){
-                sleep(1);
-            }else{
-                break;
-            }
-        }
-        $redis->setex($key,60,$is_lock);
-        return true;
-    }
-
-    public static function addsignOut($redis, $key, $out_str){
     }
 }
